@@ -1,0 +1,138 @@
+---
+title: "Apple app meta data extraction"
+author: "Ulrik Lyngs"
+date: "18 Feb 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rvest)
+library(magrittr)
+library(lubridate)
+library(xml2)
+library(here)
+library(jsonlite)
+```
+
+This sript was originally used to scrape tools from the Apple App store on 19 March 2019.
+
+# Scraping with rvest
+## Get page sources
+### Rescrape
+If you want to rescrape the Apple tools from the store, run this
+
+```{r, warning=FALSE, eval=FALSE}
+tools_to_scrape <- read_csv(here::here("materials", "2018-12-30_lyngs_tools.csv")) %>% 
+  filter(store == "Apple App Store") %>% 
+  select(title, url, appId)
+
+safe_read <- safely(read_html)
+
+tools_with_html <- tools_to_scrape %>% 
+  mutate(html = map(url, safe_read)) %>% 
+  mutate(is_ok = map_lgl(html, ~ is_null(.$error))) %>%  # add column saying whether the scrape worked
+  filter(is_ok == TRUE) %>% 
+  mutate(html = map(html, "result"))
+
+# create a folder to store the page sources in
+dir.create(here("data", "raw", "apple", str_c("own_scraper_", today(), "page_sources")))
+
+# save them out
+tools_with_html %>% 
+  select(html, appId) %>% 
+  pwalk(~write_xml(.x, str_c(str_c(here("data", "raw", "apple", str_c("own_scraper_", today(), "page_sources/")), .y, ".xml"))))
+
+
+```
+
+
+### Use original data
+If you want to do this with the original data from March 2019, run this
+
+```{r, warning=FALSE}
+tools_with_html <- tibble(
+  app_id = list.files(here("data", "raw", "apple", "own_scraper_2019-03-20_page_sources")) %>% str_remove("\\.xml$"),
+  html_paths = list.files(here("data", "raw", "apple", "own_scraper_2019-03-20_page_sources"), full.names = TRUE)
+) %>% 
+  mutate(html = map(html_paths, read_html))
+
+```
+
+
+
+## Extract app info
+We write a function for extracting the right data from a store page html
+
+```{r}
+extract_star_proportion <- function(numStar, html){
+  child_order <- 6 - numStar
+  html_node(html, paste0('.we-star-bar-graph__row:nth-child(', child_order, ')')) %>% html_node('.we-star-bar-graph__bar__foreground-bar') %>% as.character() %>% str_extract("\\d+%")
+}
+
+safe_extract_star_proportion <- possibly(extract_star_proportion, otherwise = "no_ratings")
+
+extract_data <- function(html, app_id){
+  tibble(
+    app = app_id,
+    app_header_title = html_node(html, '.app-header__title') %>% html_text(),
+    app_header_subtitle = html_node(html, '.app-header__subtitle') %>% html_text(),
+    price = html_node(html, '.app-header__list__item--price') %>% html_text(),
+    company = html_node(html, '.app-header__identity') %>% html_text(),
+    rating_and_count = html_node(html, '.star-rating__count') %>% html_text(),
+    truncated_description = html_node(html, '.we-truncate') %>% html_text(),
+    version = html_node(html, '.whats-new__latest__version') %>% html_text(),
+    average_rating = html_node(html, '.we-customer-ratings__averages__display') %>% html_text(),
+    num_ratings = html_node(html, '.we-customer-ratings__count') %>% html_text(),
+    prop_stars_5 = safe_extract_star_proportion(5, html),
+    prop_stars_4 = safe_extract_star_proportion(4, html),
+    prop_stars_3 = safe_extract_star_proportion(3, html),
+    prop_stars_2 = safe_extract_star_proportion(2, html),
+    prop_stars_1 = safe_extract_star_proportion(1, html)
+  )
+}
+
+```
+
+Then we apply it.
+
+```{r}
+meta_data <- tools_with_html %>% 
+  select(html, app_id) %>% 
+  pmap_dfr(~extract_data(.x, .y))
+
+```
+
+Now let's do a little additional cleaning and save it out
+
+```{r}
+clean_title <- function(title_raw){
+  title_raw %>% 
+    str_replace_all("[\n]","") %>% 
+    str_replace("4\\+", "") %>% 
+    str_trim()
+}
+
+clean_company <- function(company){
+  company %>% 
+    str_replace_all("[\n]","") %>% 
+    str_trim()
+}
+
+clean_meta_data <- meta_data %>% 
+  mutate(app_header_title = map_chr(app_header_title, clean_title),
+         company = map_chr(company, clean_company),
+         version = str_replace(version, "Version ", ""), 
+         num_ratings = str_replace(num_ratings, "Ratings", "") %>% str_replace("K", "00") %>% str_replace("\\.", "") %>% parse_integer(),
+         num_ratings = if_else(prop_stars_1 == "no_ratings", as.integer(0), num_ratings))
+
+write_csv(clean_meta_data, here("data", "processed", "apple", "2019-03-20-app_info_extracted_from_page_sources.csv"))
+
+```
+
+
+
+
+
+

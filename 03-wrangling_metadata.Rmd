@@ -1,0 +1,113 @@
+---
+title: "Wrangling - meta data"
+author: "Ulrik Lyngs"
+date: '2022-03-04'
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(jsonlite)
+```
+
+# Combine the meta data
+## Read in
+### Chrome & Apple
+These are straight-forward for us to read, we simply do it:
+
+```{r, message=FALSE}
+# chrome
+chrome_tools <- read_csv(here::here("data", "processed", "chrome", "2019-03-21-chrome_meta_data.csv")) %>% 
+  mutate(store = "chrome")
+
+apple_tools <- read_csv(here::here("data", "processed", "apple", "2019-03-20-app_info_extracted_from_page_sources.csv")) %>% 
+  mutate(store = "apple")
+```
+
+### Play
+From the below, the apps that were unavailable will have 'null' as their title. 
+We'll exclude them, then afterwards we'll unlist the list columns.
+
+```{r}
+# play store
+play_tools_raw <- read_json(here::here("data", "raw", "play", "2019-03-19_play_app_info.json"))
+
+play_tools_w_nulls <- tibble(
+  app = map_chr(play_tools_raw, "app"),
+  app_header_title = map(play_tools_raw, "results") %>% map("title"), #note, is null if couldn't scrape
+  app_header_subtitle = NA,
+  price = map(play_tools_raw, "results") %>% map("price"),
+  company = map(play_tools_raw, "results") %>% map("developer"),
+  rating_and_count = NA,
+  summary = map(play_tools_raw, "results") %>% map("summary"),
+  description = map(play_tools_raw, "results") %>% map("description"),
+  version = map(play_tools_raw, "results") %>% map("version"),
+  average_rating = map(play_tools_raw, "results") %>% map("score"),
+  num_ratings = map(play_tools_raw, "results") %>% map("ratings"),
+  num_reviews = map(play_tools_raw, "results") %>% map("reviews"),
+  num_5_star_reviews = map(play_tools_raw, "results") %>% map("histogram") %>% map("5"),
+  num_4_star_reviews = map(play_tools_raw, "results") %>% map("histogram") %>% map("4"),
+  num_3_star_reviews = map(play_tools_raw, "results") %>% map("histogram") %>% map("3"),
+  num_2_star_reviews = map(play_tools_raw, "results") %>% map("histogram") %>% map("2"),
+  num_1_star_reviews = map(play_tools_raw, "results") %>% map("histogram") %>% map("1"),
+  min_installs = map(play_tools_raw, "results") %>% map("minInstalls")
+)
+
+play_tools <- play_tools_w_nulls %>% 
+  filter(!map_lgl(app_header_title, is.null)) %>%  # because app_header_title is a list column, we need to use map
+  mutate_if(is.list, unlist) %>% 
+  mutate(store = "play")
+```
+
+
+## Combine
+```{r}
+apple_merge <- apple_tools %>% 
+  mutate(num_reviews = NA_integer_,
+         min_installs = NA_integer_,
+         num_users = NA_integer_) %>% 
+  select(store, tool_id = app, title = app_header_title, company, average_rating, num_ratings, num_reviews, min_installs, num_users)
+
+play_merge <- play_tools %>% 
+  mutate(num_users = NA_integer_) %>% 
+  select(store, tool_id = app, title = app_header_title, company, average_rating, num_ratings, num_reviews, min_installs, num_users)
+
+chrome_merge <- chrome_tools %>% 
+  mutate(company = str_replace(company, "offered by", "")) %>% 
+  # use the unique identifier in the URL as tool id
+  mutate(tool_id = str_extract(extension_url, "/[^/]+$") %>% str_remove("/")) %>% 
+  mutate(num_reviews = NA_integer_,
+         min_installs = NA_integer_) %>% 
+  select(store, tool_id, title = extension_header_title, company, average_rating, num_ratings, num_reviews, min_installs, num_users, company) 
+
+tool_info <- apple_merge %>% 
+  bind_rows(play_merge) %>% 
+  bind_rows(chrome_merge)
+
+
+```
+
+## Add Lyngs et al.'s feature categorisation
+```{r}
+# get the original feature coding from Lyngs et al, and create a column with its main types of design patterns in alphabetical order
+original_tools_w_alphabetical_categories <- read_csv(here::here("materials", "2018-12-30_lyngs_tools.csv")) %>% 
+  select(tool_id, url, `main category`:`main category 4`) %>% 
+  unite(categories, c(`main category`,`main category 2`,`main category 3`,`main category 4`), sep = " + ") %>% 
+  mutate(categories = categories %>% str_replace_all(" \\+ NA", "")) %>%   #unite doesn't have a drop.na option
+  mutate(categories_alphabetically = str_split(categories, " \\+ ")) %>% 
+  rowwise() %>%
+  mutate(num_categories = length(categories_alphabetically)) %>%
+  mutate(categories_alphabetically = categories_alphabetically %>% str_sort() %>% str_c(collapse = " + ")) %>%
+  ungroup() %>% 
+  select(-categories)
+
+tool_info %>% 
+  left_join(original_tools_w_alphabetical_categories) %>% 
+  relocate(title, tool_id, store) %>% 
+  write_csv(here::here("data", "processed", "meta_data_all_w_design_pattern_types.csv"))
+```
+
+
+

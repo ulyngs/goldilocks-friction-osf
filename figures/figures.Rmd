@@ -1,0 +1,372 @@
+---
+title: "Figure code"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(cowplot)
+library(ggtextures)
+```
+
+
+```{r read_data}
+meta_data <- read_csv(here::here("data", "processed", "meta_data_all_w_design_pattern_types.csv"))
+original_tools <- read_csv(here::here("materials", "2018-12-30_lyngs_tools.csv"))
+```
+
+```{r}
+### try and draw the apple one again with color
+tools_w_categories_and_image <- meta_data %>% 
+  mutate(image_single = case_when(
+    categories_alphabetically == "Block/removal" ~ "1_block",
+    categories_alphabetically == "Goal-advancement" ~ "1_goal",
+    categories_alphabetically == "Self-tracking" ~ "1_track",
+    categories_alphabetically == "Reward/punish" ~ "1_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement" ~ "2_block_goal",
+    categories_alphabetically == "Block/removal + Reward/punish" ~ "2_block_reward",
+    categories_alphabetically == "Block/removal + Self-tracking" ~ "2_block_track",
+    categories_alphabetically == "Goal-advancement + Reward/punish" ~ "2_goal_reward",
+    categories_alphabetically == "Goal-advancement + Self-tracking" ~ "2_track_goal",
+    categories_alphabetically == "Reward/punish + Self-tracking" ~ "2_track_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement + Self-tracking" ~ "3_block_track_goal",
+    categories_alphabetically == "Block/removal + Reward/punish + Self-tracking" ~ "3_block_track_reward",
+    categories_alphabetically == "Goal-advancement + Reward/punish + Self-tracking" ~ "3_goal_track_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement + Reward/punish + Self-tracking" ~ "4_all",
+  )) %>% 
+  mutate(image_single = str_c(here::here("figures", "plot_colours/"), image_single, ".png")) %>% 
+  select(tool_id, title, num_ratings, min_installs, num_users, store, image_single)
+
+```
+
+# Plot of tools by user numbers
+generate apple plot
+```{r}
+apple_data <- tools_w_categories_and_image %>% 
+  filter(store == "apple") %>% 
+  filter(num_ratings > 0)
+  
+images <- apple_data$image_single %>% 
+  set_names(apple_data$title)
+
+
+images_fill = c(
+  chrome =  here::here("figures", "textures", "fillpatterns3.gif"), #"https://www.pyngl.ucar.edu/Graphics/Images/fillpatterns3.gif",
+  play = here::here("figures", "textures", "siding1-256.jpg"),  #"http://www.hypergridbusiness.com/wp-content/uploads/2012/12/siding1-256.jpg",
+  apple = here::here("figures", "textures", "concrete1-256.jpg") # "http://www.hypergridbusiness.com/wp-content/uploads/2012/12/concrete1-256.jpg"
+)
+
+apple_features <- apple_data %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, num_ratings), y = -1000, image = title), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images) +
+    coord_flip() +
+    labs(x = "", y = "") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    #scale_y_log10() +
+    guides(image = "none") +
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),legend.position="none",
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank()) +
+    theme(plot.margin = margin(0.6, 0, 0.8, 0, "cm"))
+
+apple_bar_chart <- apple_data %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, num_ratings), y = num_ratings, image = store), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images_fill) +
+    labs(x = "", y = "Number of ratings (log scale)") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    scale_y_log10(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    guides(image = FALSE) +
+    theme_minimal() +
+    theme(plot.margin = margin(0.6, 0, 0, 0, "cm")) +
+    coord_flip()
+
+apple_combined <- plot_grid(apple_bar_chart, apple_features, rel_widths = c(4,1), labels = c("Apple App", "Features"), hjust = "left", label_x = c(0.02, 0.075), label_y = 1)
+
+save_plot(here::here("figures", "apple_ratings_and_features.png"), test_apple,
+          # each individual subplot should have an aspect ratio of 1.3
+          base_aspect_ratio = 1.8
+          )
+```
+
+generate google play plot
+
+```{r}
+num_tools_play_chrome <- 25
+
+##### create the google play plot
+play_data <- tools_w_categories_and_image %>% 
+  filter(store == "play") %>% 
+  arrange(desc(min_installs)) %>%
+  slice(1:num_tools_play_chrome)
+
+##### create the google play plot
+images <- play_data$image_single %>% 
+  set_names(play_data$title)
+
+
+play_feature_plot <- play_data %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, min_installs), y = -1000000, image = title), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images) +
+    coord_flip() +
+    labs(x = "", y = "") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    guides(image = FALSE) +
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),legend.position="none",
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank()) +
+    theme(plot.margin = margin(0.6, 0, 0.8, 0, "cm"))
+
+
+play_install_bar <- play_data %>%
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, min_installs), y = min_installs, image = store), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images_fill) +
+    labs(x = "", y = "Minimum number of installs (log scale)") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    scale_y_log10(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    guides(image = "none") +
+    theme_minimal() +
+    theme(plot.margin = margin(0.6, 0, 0, 0, "cm")) +
+    coord_flip()
+
+(play_combined <- plot_grid(play_install_bar, play_feature_plot, rel_widths = c(4,1), labels = c("Google Play", "Features"), hjust = "left", label_x = c(0.02, 0.075), label_y = 1))
+
+save_plot(here::here("figures", "play_installs_and_functionality.png"), play_combined,
+          # each individual subplot should have an aspect ratio of 1.3
+          base_aspect_ratio = 1.8
+          )
+```
+
+generate chrome web plot
+
+```{r}
+##### create the chrome web plot
+chrome_data <- tools_w_categories_and_image %>% 
+  filter(store == "chrome") %>% 
+  arrange(desc(num_users)) %>% 
+  slice(1:num_tools_play_chrome)
+
+##### create the chrome extensions plot
+images <- chrome_data$image_single %>% 
+  set_names(chrome_data$title)
+
+chrome_feature_plot <- chrome_data %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, num_users), y = -200000, image = title), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images) +
+    coord_flip() +
+    labs(x = "", y = "") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    guides(image = FALSE) +
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),legend.position="none",
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank()) +
+    theme(plot.margin = margin(0.6, 0, 0.8, 0, "cm"))
+
+# IF WE WANT THE FILL TO BE THE SAME AS FOR RATINGS
+chrome_user_bar <- chrome_data %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = reorder(title, num_users), y = num_users, image = store), stat = "identity", width = 0.8) +
+    scale_image_manual(values = images_fill) +
+    labs(x = "", y = "Number of users (log scale)") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    scale_y_log10(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    guides(image = "none") +
+    theme_minimal() +
+    theme(plot.margin = margin(0.6, 0, 0, 0, "cm")) +
+    coord_flip()
+
+
+chrome_combined <- plot_grid(chrome_user_bar, chrome_feature_plot, rel_widths = c(4,1), labels = c("Chrome Web", "Features"), hjust = "left", label_x = c(0.02, 0.075), label_y = 1)
+
+save_plot(here::here("figures", "chrome_users_and_functionality.png"), chrome_combined,
+          # each individual subplot should have an aspect ratio of 1.3
+          base_aspect_ratio = 1.8
+          )
+```
+
+
+put them all together
+
+```{r}
+apple <- ggdraw() + draw_image(here::here("figures", "apple_ratings_and_features.png")) + theme(plot.margin = unit(c(0.2,0,0,0.2), "cm"))
+play <- ggdraw() + draw_image(here::here("figures", "play_installs_and_functionality.png")) + theme(plot.margin = unit(c(0.2,0,0,0.2), "cm"))
+chrome <- ggdraw() + draw_image(here::here("figures", "chrome_users_and_functionality.png")) + theme(plot.margin = unit(c(0.2,0,0,0.2), "cm"))
+legend <- ggdraw() + draw_image(here::here("figures", "legend_horisontal.png"), scale = 0.8) + theme(plot.margin = unit(c(-8,0,0,0.5), "cm"))
+
+user_numbers_combined_plot <- plot_grid(chrome, play, apple, legend, ncol=1)
+
+save_plot(here::here("figures", "user_numbers_combined_plot.png"), user_numbers_combined_plot,
+          ncol = 1, # we're saving a grid plot of 2 columns
+          nrow = 4, # and 2 rows
+          # each individual subplot should have an aspect ratio of 1.3
+          base_aspect_ratio = 1.8
+          )
+```
+
+
+
+# Plot of average ratings by design pattern types
+
+```{r}
+ratings_more_than <- 14
+
+ave_ratings_table <- meta_data %>%
+  filter(num_ratings > ratings_more_than) %>%
+  group_by(categories_alphabetically) %>%
+  summarise(num_tools = n(),
+            median_rating = median(average_rating, na.rm = TRUE) %>% round(2),
+            #mean_rating = mean(average_rating, na.rm = TRUE),
+            min_rating = min(average_rating, na.rm = TRUE) %>% round(2),
+            max_rating = max(average_rating, na.rm = TRUE) %>% round(2)) %>%
+  arrange(desc(median_rating)) %>% 
+  left_join(meta_data %>% distinct(categories_alphabetically, num_categories)) %>% 
+  arrange(num_categories, desc(median_rating)) %>% 
+  select(-num_categories) %>% 
+  filter(!is.na(median_rating)) %>% 
+  mutate(image_single = case_when(
+    categories_alphabetically == "Block/removal" ~ "1_block",
+    categories_alphabetically == "Goal-advancement" ~ "1_goal",
+    categories_alphabetically == "Self-tracking" ~ "1_track",
+    categories_alphabetically == "Reward/punish" ~ "1_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement" ~ "2_block_goal",
+    categories_alphabetically == "Block/removal + Reward/punish" ~ "2_block_reward",
+    categories_alphabetically == "Block/removal + Self-tracking" ~ "2_block_track",
+    categories_alphabetically == "Goal-advancement + Reward/punish" ~ "2_goal_reward",
+    categories_alphabetically == "Goal-advancement + Self-tracking" ~ "2_track_goal",
+    categories_alphabetically == "Reward/punish + Self-tracking" ~ "2_track_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement + Self-tracking" ~ "3_block_track_goal",
+    categories_alphabetically == "Block/removal + Reward/punish + Self-tracking" ~ "3_block_track_reward",
+    categories_alphabetically == "Goal-advancement + Reward/punish + Self-tracking" ~ "3_goal_track_reward",
+    categories_alphabetically == "Block/removal + Goal-advancement + Reward/punish + Self-tracking" ~ "4_all",
+  )) %>% 
+  mutate(image_single = str_c(here::here("figures", "plot_colours/"), image_single, ".png"))
+
+ave_ratings_levels <- ave_ratings_table$categories_alphabetically
+
+# now create the feature plot
+images <- ave_ratings_table$image_single %>% 
+  set_names(ave_ratings_table$categories_alphabetically)
+
+feature_plot_compare_types <- ave_ratings_table %>% 
+  ungroup() %>% 
+  mutate(categories_alphabetically = factor(categories_alphabetically, levels = rev(ave_ratings_levels), ordered = TRUE)) %>% 
+  ggplot() +
+    geom_textured_bar(aes(x = categories_alphabetically, y = -0.9, image = categories_alphabetically), stat = "identity", width = 0.75) +
+    scale_image_manual(values = images) +
+    coord_flip() +
+    labs(x = "", y = "") +
+    guides(image = FALSE) +
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),legend.position="none",
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank()) +
+    theme(plot.margin = margin(1.5, 0, 0.82, 0, "cm"))
+
+# create the boxplot
+# with store
+boxplot_ratings <- meta_data %>%
+  filter(num_ratings > ratings_more_than) %>%
+  mutate(categories_alphabetically = factor(categories_alphabetically, levels = rev(ave_ratings_levels), ordered = TRUE)) %>%
+  ggplot(aes(x = categories_alphabetically, y = average_rating)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(width = 0.3, height = 0.1, size = 1.1, alpha = 0.7) +
+    theme_minimal() +
+    labs(x = "", y = "") +
+    coord_flip() +
+    theme(axis.text.y=element_blank()) +
+    theme(plot.margin = margin(1.5, 0, 0, 0, "cm")) +
+    scale_y_continuous(limits = c(1,5))
+
+ratings_by_type <- plot_grid(boxplot_ratings, feature_plot_compare_types, rel_widths = c(3,1.2), labels = c("Average rating", "Features"), hjust = -0.14)
+
+save_plot(here::here("figures", "ratings_by_type.png"), ratings_by_type,
+          # each individual subplot should have an aspect ratio of 1.3
+          base_aspect_ratio = 1.8
+          )
+
+ggdraw() + 
+  draw_image(here::here("figures", "ratings_by_type.png")) +
+  annotate(
+    "text", label = "Block/\nremoval",
+    x = 0.765, y = 0.84, size = 2.8, colour = "black"
+  ) +
+  annotate(
+    "text", label = "Self-\ntracking",
+    x = 0.83, y = 0.84, size = 2.8, colour = "black"
+  ) +
+  annotate(
+    "text", label = "Goal-\nadvance",
+    x = 0.895, y = 0.84, size = 2.8, colour = "black"
+  ) +
+  annotate(
+    "text", label = "Reward/\npunish",
+    x = 0.955, y = 0.84, size = 2.8, colour = "black"
+  )
+  
+ggsave(here::here("figures", "ratings_by_type_annotated.pdf"), height = 4.3, width = 7)
+```
+
+
+# Wordcloud for reviews
+```{r}
+reviews <- read_csv(here::here("data", "processed", "distinct_reviews.csv"))
+
+library(tidytext)
+library(SnowballC)
+library(wordcloud2)
+
+data(stop_words)
+
+tidy_review_words <- reviews %>% 
+  unnest_tokens(word, review_text) %>% 
+  anti_join(stop_words) %>% 
+  filter(!is.na(word))
+
+tidy_review_words %>%
+  count(word, sort = TRUE) %>% 
+  filter(!word %in% c("app", "apps", "phone", "extension")) %>% 
+  wordcloud2(size = 1)
+
+# tidy_review_words %>% 
+#   mutate(word = case_when(
+#     str_detect(word, "^love") ~ "love",
+#     str_detect(word, "^block") ~ "block", 
+#     str_detect(word, "^addict") ~ "addiction", 
+#     str_detect(word, "^productiv") ~ "productivity", 
+#     str_detect(word, "^wast") ~ "waste", 
+#     str_detect(word, "track") ~ "tracking", 
+#     str_detect(word, "^notification") ~ "notification", 
+#     str_detect(word, "^feature") ~ "feature", 
+#     str_detect(word, "^distract") ~ "distract", 
+#     str_detect(word, "^focus") ~ "focus", 
+#     word %in% c("recommend", "recommended") ~ "recommend", 
+#     word == "use" ~ "use/usage", 
+#     word == "usage" ~ "use/usage", 
+#     TRUE ~ word
+#   )) %>% 
+#   count(word, sort = TRUE) %>% 
+#   filter(!word %in% c("app", "apps", "phone", "extension")) %>% 
+#   wordcloud2(size = 1)
+
+# tidy_review_words %>% 
+#   mutate(word = wordStem(word)) %>% 
+#   count(word, sort = TRUE) %>% 
+#   filter(!word %in% c("app", "apps", "phone", "extension")) %>% 
+#   wordcloud2(size = 1)
+```
+

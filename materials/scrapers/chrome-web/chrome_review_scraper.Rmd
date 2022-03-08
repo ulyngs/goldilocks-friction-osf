@@ -1,0 +1,210 @@
+---
+title: "chrome_reviews_scraper"
+author: "Ulrik Lyngs"
+date: "05/02/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(robotstxt)
+library(jsonlite)
+library(tidyverse)
+library(rvest)
+library(RSelenium)
+library(here)
+library(RCurl)
+```
+
+# Rvest <3 RSelenium
+## Websites' own stated rules - robots.txt
+From a research ethics perspective, we should start by inspecting **robots.txt**, which is a file most websites contain saying how they want others to behave when accessing the website using robots.
+
+```{r}
+get_robotstxt(domain = "chrome.google.com/")
+
+paths_allowed("https://chrome.google.com/webstore/detail/")
+
+```
+
+So we see that Google actually don't want us to search through the Chrome Web Store with automated scrapers, but everything else should be fair game.
+
+We also add delays when we crawl so that we're not mistaken for a DDoS attack.
+
+We'll do this with `Sys.sleep()`, e.g. `Sys.sleep(5)` to add a 5-second delay. However, using a constant might also get you recognised as a robot. We could use e.g. `Sys.sleep(runif(n = 1, min = 5, max = 10))` to add a random sleep between 5 and 10 seconds.
+
+
+## Scraping with RSelenium
+### Getting things up and running
+
+1. install RSelenium
+```{r}
+# to run RSelenium we need these:
+# devtools::install_github("johndharrison/binman")
+# devtools::install_github("johndharrison/wdman")
+# devtools::install_github("ropenSci/RSelenium")
+```
+
+2. Get Docker up and running
+  - install it from https://docs.docker.com/docker-for-mac/install/
+  - Open the app (on first run you will need to accept its terms and conditions)
+  - then in a terminal start a chrome server with `docker run --name chrome -d -p 4445:4444 selenium/standalone-chrome`
+  - there's some test things shown here that you can run (commented out)
+
+```{r, eval=FALSE}
+# in a terminal run: docker run --name chrome -d -p 4445:4444 selenium/standalone-chrome
+# this will start up a server named 'chrome'
+# to stop it you go 'docker stop chrome'
+# to see what's currently running, go 'docker ps'
+# to delete a server instance name chrome, do 'docker rm chrome'
+
+# -name names your container
+# -v mount volume
+# -d detached mode (if you don't do this, it'll actually enter the image rather than just)
+# -p port mapping (selenium connects to port 4444 by default; if you go like 4445:4444 then you can connect to 4445 on the outside which is mapped to 4444; with -p 5901:5900 you can open up ports for viewers)
+
+# remDr <- remoteDriver(port=4445L, browserName = "chrome")
+# remDr$open()
+# remDr$getStatus()
+# remDr$navigate("https://www.google.com/")
+# remDr$getCurrentUrl()
+# remDr$navigate("https://www.bing.com/")
+# remDr$getCurrentUrl()
+# remDr$goBack()
+# remDr$getCurrentUrl()
+# remDr$goForward()
+# remDr$getCurrentUrl()
+# remDr$close()
+```
+
+### Create function to scrape the sources of review pages
+
+```{r, echo=TRUE, eval=FALSE, results='hide'}
+scrape_review_pages <- function(url_string){
+  # navigate to url
+  print(str_c("navigating to ", url_string))
+  remDr$navigate(url_string)
+  Sys.sleep(1) # wait for one second
+  print(remDr$getCurrentUrl())
+  remDr$screenshot(display = TRUE) # show screenshot
+  
+  # click 'reviews' button
+  reviewButton <- remDr$findElement(using = 'class', "h-e-f-z-b")
+  Sys.sleep(0.5)
+  reviewButton$clickElement()
+  remDr$screenshot(display = TRUE) # show screenshot
+  
+  # save the source
+    # we don't know how many reviews there are and because
+    # speed is not really a concern, we won't preallocate output length
+  n <- 1
+  reviews <- list()
+  
+  reviews[[n]] <- remDr$getPageSource()
+  
+  # while there is a visible 'next' button, click it and save the information
+  nextButton <- remDr$findElement(using = 'css', "a.Aa.dc-se")
+  Sys.sleep(0.5)
+  remDr$executeScript("arguments[0].scrollIntoView(true);", args = list(nextButton)) # scroll to it
+  remDr$screenshot(display = TRUE)
+  
+  
+  while (nextButton$isElementDisplayed()[[1]]) {
+    nextButton$clickElement()
+    remDr$screenshot(display = TRUE) # show screenshot
+    
+    # store the page
+    n <- n + 1
+    print(stringr::str_c("storing page ", n))
+    reviews[[n]] <- remDr$getPageSource()
+    
+    print(str_c("can we see a 'next' button?", nextButton$isElementDisplayed()[[1]]))
+    
+    print("sleeping for one second")
+    Sys.sleep(1)
+  }
+  
+  return(reviews)
+}
+```
+
+### Create function to iterate over list of titles and urls and scrape their sources
+
+```{r}
+# make helper function to strip out special characters from titles
+remove_special_chars <- function(annoying_title) {
+  str_replace_all(annoying_title, "[^[A-Za-z]]", " ") %>% str_replace_all(.,"[ ]+", " ")  
+}
+
+# make helper function to name the list with the pages
+set_review_page_names <- function(review_pages){
+  page_names <- str_c("page ", seq_along(review_pages)) 
+  
+  review_pages %>% 
+    set_names(page_names)
+}
+
+scrape_and_store_page_sources <- function(title_and_url_tbl) {
+  for (i in 1:nrow(title_and_url_tbl)) {
+    print(stringr::str_c("there are ", nrow(title_and_url_tbl), " extensions to scrape."))
+    
+    print(stringr::str_c("scraping extension number ", i, " titled ", title_and_url_tbl$title[i], " from url ", title_and_url_tbl$url[i]))
+    
+    # get the review pages
+    review_pages <- scrape_review_pages(title_and_url_tbl$url[i])
+    
+    # put the result and its parsing in a tibble
+    source_tibble <- review_pages %>% 
+      set_review_page_names() %>% 
+      enframe() %>% 
+      mutate(extension_title = title_and_url_tbl$title[i],
+             extension_url = title_and_url_tbl$url[i],
+             time_scraped = lubridate::now())
+    
+    # store it
+    source_tibble %>% 
+      write_rds(str_c(here::here("data", "raw", "chrome", str_c(lubridate::today(), "-page_sources_reviews/")), "extension_num_", i, remove_special_chars(title_and_url_tbl$title[i]), ".rds"))
+  }
+}
+
+```
+
+### Error handling
+So we need this to be able to handle errors. Let us try with three extensions - two we know works and one we know doesn't work.
+
+```{r}
+# Lights off will give an error - the others won't
+test_extensions <- tibble(
+  title = c("(NO)tifications", "Lights off", "Afairo"),
+  url = c("https://chrome.google.com/webstore/detail/notifications/ocfjkjbhicdjhmgkolejpojieddlogbg?hl=gb", "https://chrome.google.com/webstore/detail/lights-off/ehfaompdnhilblcmkkakofflcjfijhai?hl=gb", "https://chrome.google.com/webstore/detail/afairo/imecoioakflafgnkkklfhopabameijck?hl=gb")
+)
+```
+
+So rather than running this directly, we'll wrap the scraper function in `safely` to make sure we don't crash when hitting extensions that have become unavailable. See [R4DS 'Dealing with failure'](https://r4ds.had.co.nz/iteration.html#dealing-with-failure).
+
+```{r}
+safe_scrape_sources <- safely(scrape_and_store_page_sources)
+```
+
+Now let's test it.
+
+```{r}
+# TEST: scrape review page sources for forest
+forest_reviews <- safe_scrape_sources("https://chrome.google.com/webstore/detail/forest-stay-focused-be-pr/kjacjjdnoddnpbbcjilcajfhhbdhkpgk?hl=gb")
+```
+
+### Go ahead and do it!
+
+```{r}
+extensions_to_scrape <- read_csv(here("materials", "2018-12-30_lyngs_tool_coding.csv")) %>% 
+  filter(is.na(Exclude)) %>% 
+  filter(str_detect(url, "chrome.google.com/webstore")) %>% 
+  mutate(is_available = url.exists(url)) %>%  # this will take a while
+  filter(is_available == TRUE) %>% 
+  select(title, url)
+
+scrape_and_store_page_sources(extensions_to_scrape)
+
+```
+
+

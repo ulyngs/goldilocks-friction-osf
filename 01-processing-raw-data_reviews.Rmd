@@ -1,0 +1,368 @@
+---
+title: "Processing of raw data"
+author: "Ulrik Lyngs"
+date: '2022-03-01'
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(janitor)
+library(jsonlite)
+```
+
+
+# Chrome Web store
+## Extract reviews from page sources
+In this case, we've store .RDS files that contain the page sources.
+
+We'll first create the helper functions we need.
+
+```{r}
+get_reviews_from_full_source <- function(source) {
+  source %>% 
+    read_html() %>% 
+    html_nodes(".ba-fb > div > .ba-bc-Xb")
+}
+
+extract_info_from_review_div <- function(review_div) {
+  user_name <- review_div %>% 
+    html_node(".comment-thread-displayname") %>% 
+    html_text()
+    
+  date_modified <- review_div %>% 
+    html_node(".ba-Eb-Nf") %>% 
+    html_text()
+    
+  numstars <- review_div %>% 
+    html_nodes(".rsw-starred") %>% 
+    length()
+  
+  text <- review_div %>% 
+    html_node(".ba-Eb-ba") %>% 
+    html_text()
+  
+  result_tibble <- tibble(type = "review",
+                          user_name,
+                          reply_to = NA,
+                          date_modified,
+                          numstars,
+                          text)
+  
+  replies <- review_div %>% 
+    html_nodes(".Fg-b-ob-fb .ba-bc-Xb-K")
+  
+  
+  if (length(replies) > 0) {
+    for (i in seq_along(replies)) {
+      name_replier <- replies[[i]] %>% 
+        html_node(".comment-thread-displayname") %>% 
+        html_text()
+      
+      date_modified <- replies[[i]] %>% 
+        html_node(".ba-Eb-Nf") %>% 
+        html_text()
+      
+      text <- replies[[i]] %>% 
+        html_node(".ba-Eb-ba") %>% 
+        html_text()
+      
+      result_tibble <- bind_rows(result_tibble,
+                                 tibble(type = "reply",
+                                        reply_to = user_name,
+                                        user_name = name_replier,
+                                        date_modified,
+                                        numstars = NA,
+                                        text))
+    }
+  }
+  
+  return(result_tibble)
+  
+}
+
+get_review_content_from_list <- function(list_with_review_divs) {
+  map_dfr(list_with_review_divs, extract_info_from_review_div)
+}
+
+return_reviews_from_source <- function(tibble_with_page_sources) {
+  tibble_with_page_sources %>% 
+    mutate(review_divs = map(unlist(value), get_reviews_from_full_source),
+           review_content = map(review_divs, get_review_content_from_list)) %>% 
+    select(-value, -review_divs) %>% 
+    rename(review_page = name) %>% 
+    unnest(cols = c(review_content)) %>% 
+    filter(!is.na(text))
+}
+```
+
+We'll do things in two steps, to avoid running into memory issues.
+
+We first just read in the RDS files one at a time, extract the reviews, and store them in a CSV file (note: we're not doing this in a very efficient way, so it might take dozens of seconds for extensions with many reviews, e.g. 'Block Site'):
+
+It takes a while, so we'll set it to not evaluate by default.
+
+```{r eval=FALSE}
+#dir.create(here::here("data", "processed", "chrome", "2019-02-08-reviews_extracted"))
+
+read_process_and_store <- function(filepath, filename) {
+  savename <- filename %>% str_remove("\\.rds") %>% make_clean_names()
+  
+  print(str_c("doing ", filename))
+  
+  read_rds(filepath) %>% 
+    return_reviews_from_source() %>% 
+    write_csv(str_c(here::here("data", "processed", "chrome", "2019-02-08-reviews_extracted/"), savename, ".csv"))
+}
+
+rds_files_w_reviews <- tibble(
+  filepath = list.files(path = here::here("data", "raw", "chrome", "2019-02-08-page_sources"), pattern = "rds$", full.names = TRUE),
+  filename = basename(filepath)
+)
+
+rds_files_w_reviews %>% 
+  pwalk(read_process_and_store)
+```
+
+## Clean up and save out
+
+```{r}
+review_CSVs <- list.files(path = here::here("data", "processed", "chrome", "2019-02-08-reviews_extracted"), pattern = "csv$", full.names = TRUE)
+
+chrome_reviews <- map_dfr(review_CSVs, read_csv, 
+                          col_types = cols(
+                            numstars = col_integer(),
+                            reply_to = col_character())
+                          )
+
+chrome_reviews %>% 
+  # add date
+  mutate(date_modified = str_remove(date_modified, "Modified "),
+         date_modified = case_when(
+          str_detect(date_modified, "hours ago") ~ "Feb 8, 2019",
+          str_detect(date_modified, "1 day ago") ~ "Feb 7, 2019",
+          str_detect(date_modified, "2 days ago") ~ "Feb 6, 2019",
+          str_detect(date_modified, "3 days ago") ~ "Feb 5, 2019",
+          str_detect(date_modified, "4 days ago") ~ "Feb 4, 2019",
+          str_detect(date_modified, "5 days ago") ~ "Feb 3, 2019",
+          str_detect(date_modified, "6 days ago") ~ "Feb 2, 2019",
+          TRUE ~ date_modified
+        ),
+    date_modified = lubridate::mdy(date_modified)) %>% 
+  rename(rating = numstars) %>% 
+  distinct(across(-review_page)) %>% 
+  write_csv(here::here("data", "processed", "chrome", "2019-02-08-chrome_reviews_unique.csv"))
+
+```
+
+
+# Google Play
+Here we have all the reviews in one big json file
+
+```{r}
+play_reviews_json <- read_json(here::here("data", "raw", "play", "2019_03_19_play_all_reviews.json"))
+
+# have a look at the first app
+# play_reviews_json[[1]] %>% 
+#   View()
+
+# put the data in a tibble
+play_reviews <- tibble(
+  app_id = map_chr(play_reviews_json, "packageName"),
+  num_reviews = map_int(play_reviews_json, "numberOfReviews"),
+  reviews = map(play_reviews_json, "reviews")
+) %>% 
+  arrange(desc(num_reviews))
+
+# let's just see how many we have
+play_reviews %>% 
+  summarise(num_apps = n(),
+    num_reviews = sum(num_reviews))
+
+```
+
+Now we grab the information we want from the reviews and put it in a tibble
+
+```{r}
+# let's make a function to extract the information we want from the reviews
+extract_play_review_info <- function(play_store_review) {
+  tibble(
+    user_name = map_chr(play_store_review, "userName"),
+    date = map_chr(play_store_review, "date"),
+    rating = map_int(play_store_review, "score"),
+    text = map_chr(play_store_review, "text")
+  )
+}
+
+# put 'em all in one big happy unnested tibble
+play_reviews_tibble <- play_reviews %>% 
+  mutate(review_info = map(reviews, extract_play_review_info)) %>% 
+  select(-reviews, -num_reviews) %>% 
+  unnest(cols = c(review_info))
+
+```
+
+## Save out unique reviews
+Then we remove duplicates and save them out
+
+```{r}
+play_reviews_tibble %>% 
+  mutate(date = lubridate::mdy(date)) %>% 
+  distinct() %>% 
+  write_csv(here::here("data", "processed", "play", "2019_03_19-play_reviews_unique.csv"))
+
+```
+
+
+# Apple App Store
+Here we have things in separate files.
+
+## JSON files from the GitHub scraper
+The scraper from https://github.com/facundoolano/app-store-scraper has given us JSON files
+
+```{r}
+# have a look at one
+(example_apple_json <- read_json(here::here("data", "raw", "apple", "gh_scraper_2019-03-19_individual_reviews", "club.donutdog.ios.json")))
+
+# grab filepaths
+json_files <- list.files(path  = here::here("data", "raw", "apple", "gh_scraper_2019-03-19_individual_reviews"), pattern = "json$", full.names = TRUE)
+
+apple_reviews_json <- json_files %>% 
+  map(read_json)
+
+apple_reviews <- tibble(
+  app_id = map_chr(apple_reviews_json, "app"),
+  reviews = map(apple_reviews_json, "reviews"),
+  num_reviews = map_int(reviews, length)
+)
+
+# let's just see how many we have
+apple_reviews %>% 
+  summarise(num_apps = n(),
+            num_reviews = sum(num_reviews))
+
+```
+
+Let's actually grab the information we want and put in a useful format.
+
+NOTE: Apple reviews have a heading for the reviews - we'll merge this into the text.
+
+```{r}
+extract_apple_review_info <- function(apple_review) {
+  tibble(
+    user_name = map_chr(apple_review, "userName"),
+    rating = map_int(apple_review, "score"),
+    review_title = map_chr(apple_review, "title"),
+    review_text = map_chr(apple_review, "text")
+  )
+}
+
+# put 'em all in one big happy unnested tibble
+apple_review_tibble <- apple_reviews %>% 
+  mutate(review_info = map(reviews, extract_apple_review_info)) %>% 
+  select(-reviews) %>% 
+  unnest()
+
+```
+
+We noticed on manual inspection that these apps had reviews on their store pages that the github scraper missed:
+- pabloweb.net.SelfControl
+- com.imobiapp.screentimer
+- com.getcluster.Compose
+- club.donutdog.ios
+- com.getfeedless.feedless
+- com.riko.suyasaso
+- com.bellostudios.hooked
+- com.jordan-carney.Liberate
+- org.aliyilmaz.notelr
+- ca.genoe.Refrain
+- vn.wehelp.SelfControlLite
+- com.yeowjin.simpletext
+- com.usedopamine.app.space
+- com.erichuju.pomodoro
+- com.bluecocoa.time2
+
+We scraped the page sources for these apps ourselves. Let's add them in.
+
+## Extract reviews from page sources
+```{r}
+apps_w_missing_reviews <- c('pabloweb.net.SelfControl','com.imobiapp.screentimer','com.getcluster.Compose','club.donutdog.ios','com.getfeedless.feedless','com.riko.suyasaso','com.bellostudios.hooked','com.jordan-carney.Liberate','org.aliyilmaz.notelr','ca.genoe.Refrain','vn.wehelp.SelfControlLite','com.yeowjin.simpletext','com.usedopamine.app.space','com.erichuju.pomodoro','com.bluecocoa.time2')
+
+length(apps_w_missing_reviews)
+```
+
+
+Let's make the helper functions:
+
+```{r}
+# for extracting developer responses
+extract_dev_response_text <- function(review_div){
+  html_nodes(review_div, '.we-customer-review__body') %>% .[[2]] %>%  html_text()
+}
+safe_extract_dev_response_text <- possibly(extract_dev_response_text, NA_character_)
+
+
+grab_reviews_from_single_div <- function(single_review_div){
+  tibble(
+    user_name = html_node(single_review_div, '.we-customer-review__user') %>% html_text(),
+    date = html_node(single_review_div, 'time') %>% html_text(),
+    rating = html_node(single_review_div, '.we-customer-review__rating') %>% html_attrs() %>% enframe() %>% filter(name == 'aria-label') %>% pull(value),
+    review_title = html_node(single_review_div, '.we-customer-review__title') %>% html_text(),
+    review_text = html_node(single_review_div, '.we-customer-review__body') %>% html_text(),
+    dev_response_title = html_node(single_review_div, '.we-customer-review__header--response .we-customer-review__title') %>% html_text(),
+    dev_response_date = html_node(single_review_div, '.we-customer-review__header--response time') %>% html_text(),
+    dev_response_text = safe_extract_dev_response_text(single_review_div)
+  )
+  
+}
+
+iterate_over_review_divs <- function(div_with_reviews){
+  map_dfr(div_with_reviews, grab_reviews_from_single_div)
+}
+
+
+```
+
+Then let's do it
+
+```{r}
+reviews_visible_on_store_pages <- tibble(
+  app_id = apps_w_missing_reviews,
+  html = map(apps_w_missing_reviews, ~ read_html(paste0(here::here("data", "raw", "apple", "own_scraper_2019-03-20_page_sources/"), .x, ".xml"))),
+  review_divs = map(html, ~ html_nodes(.x, ".l-row .we-customer-review")),
+  reviews = map(review_divs, iterate_over_review_divs)
+) %>% 
+  select(app_id, reviews) %>% 
+  unnest(cols = c(reviews))
+
+```
+
+
+## Merge reviews w/ github scraper
+Finally, we take reviews from what was scraped with the ordinary scraper from github, and merge with those we scraped ourselves.
+
+```{r}
+apple_reviews_all <- reviews_visible_on_store_pages %>% 
+  mutate(rating = str_extract(rating, "\\d") %>% as.integer()) %>% 
+  bind_rows(apple_review_tibble %>% select(-num_reviews)) 
+
+```
+
+## Clean up and save out unique reviews
+
+```{r}
+apple_reviews_all %>% 
+  # merge the title of the apple reviews into the text, then remove line breaks
+  mutate(user_name = str_remove(user_name, "\n"),
+         review_text = str_c(review_title, review_text, sep = ". ") %>% str_replace_all("\n", "")) %>% 
+  select(-review_title) %>% 
+  # turn the rating into an integer
+  mutate(rating = str_replace(rating, "out of 5", "") %>% as.integer()) %>% 
+  # change date format
+  mutate(date = lubridate::dmy(date)) %>% 
+  distinct() %>% 
+  write_csv(here::here("data", "processed", "apple", "2019-03-21_apple_reviews_unique.csv"))
+```

@@ -1,0 +1,113 @@
+---
+title: "Chrome extensions info scraper"
+author: "Ulrik Lyngs"
+date: "21 March 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rvest)
+library(lubridate)
+library(here)
+library(xml2)
+library(janitor)
+```
+
+This sript was originally used to scrape tools from the Apple App store on 19 March 2019.
+
+# Scraping with rvest
+## Get page sources
+
+### Rescrape
+If you want to rescrape the tools from the store, run this
+
+```{r, eval=FALSE}
+tools_to_scrape <- read_csv(here::here("materials", "2018-12-30_lyngs_tools.csv")) %>% 
+  filter(store == "Chrome Web Store") %>% 
+  select(title, url) %>% 
+  mutate(filename = str_c("ext", row_number(), "_", make_clean_names(title)))
+
+safe_read <- safely(read_html)
+
+tools_with_html <- tools_to_scrape %>% 
+  mutate(html = map(url, safe_read)) %>% # SCRAPE
+  mutate(is_ok = map_lgl(html, ~ is_null(.$error))) %>% # add column saying whether the scrape worked
+  filter(is_ok == TRUE) %>% # only the keep the ones that were available
+  mutate(html = map(html, "result")) %>% # grab just the html part
+
+
+# create a folder to store the page sources in
+dir.create(here("data", "raw", "chrome", str_c(today(), "-page_sources")))
+
+
+# save them out
+tools_with_html %>% 
+  select(html, filename) %>% 
+  pwalk(~write_xml(.x, str_c(str_c(here("data", "raw", "chrome", str_c(today(), "-page_sources_info/")), .y, ".xml"))))
+
+```
+
+
+### Use original data
+If you want to do this with the original data from March 2019, run this
+
+```{r, warning=FALSE}
+tools_with_html <- tibble(
+  filename = list.files(here("data", "raw", "chrome", "2019-03-21-page_sources_info")) %>% str_remove("\\.xml$"),
+  html_paths = list.files(here("data", "raw", "chrome", "2019-03-21-page_sources_info"), full.names = TRUE)
+) %>% 
+  mutate(html = map(html_paths, read_html)) %>% 
+  select(-html_paths)
+
+```
+
+
+## Extract app info
+
+```{r}
+extract_data <- function(html){
+  tibble(
+    extension_url = html_node(html, '[property="og:url"]') %>% html_attr("content"),
+    extension_header_title = html_node(html, '.e-f-w') %>% html_text(),
+    company = html_node(html, '.e-f-Me') %>% html_text(),
+    summary = html_node(html, '.C-b-p-j-Pb') %>% html_text(),
+    description = html_node(html, '.C-b-p-j-Oa') %>% html_text(),
+    version = html_node(html, '.C-b-p-D-Xe.h-C-b-p-D-md') %>% html_text(),
+    average_rating = html_node(html, '.q-N-nd') %>% html_attrs() %>% enframe() %>% filter(name == 'aria-label') %>% pull(value),
+    num_ratings = html_node(html, '.q-N-nd') %>% html_attrs() %>% enframe() %>% filter(name == 'aria-label') %>% pull(value),
+    num_users = html_node(html, '.e-f-ih') %>% html_text()
+  )
+}
+
+# get the meta data
+extension_info <- map_dfr(tools_with_html$html, extract_data)
+
+```
+
+Now let's do a bit of cleaning of the data and save it out
+
+```{r}
+info_cleaned <- extension_info %>% 
+  mutate(average_rating = str_extract(average_rating, "\\d[^o]+") %>% parse_number(),
+         num_ratings = str_extract(num_ratings, "[^\\.]+ user") %>% str_replace("user", "") %>% str_replace("One", "1") %>% parse_number(),
+         num_users = str_replace(num_users, "user", "") %>% str_replace("s", "") %>% parse_number(),
+         company = str_replace(company, "offered by ", "") %>% str_replace("\n", ""))
+
+info_cleaned %>% 
+  write_csv(here("data", "processed", "chrome", "2019-03-21-chrome_meta_data.csv"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

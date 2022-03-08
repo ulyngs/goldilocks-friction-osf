@@ -1,0 +1,128 @@
+\documentclass[review]{elsarticle}
+
+\usepackage{lineno,hyperref}
+\modulolinenumbers[5]
+
+\usepackage{lscape}
+
+\journal{$journal$}
+
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% commands for the type illustrations
+\newcommand{\typeBlock}{%
+  \begingroup\normalfont
+  \includegraphics[height=0.27cm]{figures/block_circle.png}%
+  \endgroup
+}
+\newcommand{\typeTrack}{%
+  \begingroup\normalfont
+  \includegraphics[height=0.27cm]{figures/track_triangle.png}%
+  \endgroup
+}
+\newcommand{\typeGoal}{%
+  \begingroup\normalfont
+  \includegraphics[height=0.25cm]{figures/goal_square.png}%
+  \endgroup
+}
+\newcommand{\typeReward}{%
+  \begingroup\normalfont
+  \includegraphics[height=0.3cm]{figures/reward_star.png}%
+  \endgroup
+}
+\newcommand{\emojiTearsOfJoy}{%
+  \begingroup\normalfont
+  \includegraphics[height=0.3cm]{figures/tears-of-joy.png}%
+  \endgroup
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%% Elsevier bibliography styles
+%%%%%%%%%%%%%%%%%%%%%%%
+%% To change the style, put a % in front of the second line of the current style and
+%% remove the % from the second line of the style you would like to use.
+%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Numbered
+%\bibliographystyle{model1-num-names}
+
+%% Numbered without titles
+%\bibliographystyle{model1a-num-names}
+
+%% Harvard
+%\bibliographystyle{model2-names.bst}\biboptions{authoryear}
+
+%% Vancouver numbered
+%\usepackage{numcompress}\bibliographystyle{model3-num-names}
+
+%% Vancouver name/year
+%\usepackage{numcompress}\bibliographystyle{model4-names}\biboptions{authoryear}
+
+%% APA style
+%\bibliographystyle{model5-names}\biboptions{authoryear}
+
+%% AMA style
+%\usepackage{numcompress}\bibliographystyle{model6-num-names}
+
+%% `Elsevier LaTeX' style
+\bibliographystyle{elsarticle-num}
+%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{$title$}
+%\tnotetext[mytitlenote]{Fully documented templates are available in the elsarticle package on \href{http://www.ctan.org/tex-archive/macros/latex/contrib/elsarticle}{CTAN}.}
+
+%% Group authors per affiliation:
+\author[1]{Ulrik Lyngs\corref{cor1}}
+\ead{ulrik.lyngs@cs.ox.ac.uk}
+
+\author[2]{Kai Lukoff} 
+\ead{kai1@uw.edu}
+
+\author[3]{Petr Slovák}
+\ead{petr.slovak@kcl.ac.uk}
+
+\author[1]{Nitin Agrawal}
+\ead{nitin.agrawal@cs.ox.ac.uk}
+
+\author[1]{Max Van Kleek}
+\ead{max.van.kleek@cs.ox.ac.uk}
+
+\author[1]{Nigel Shadbolt}
+\ead{nigel.shadbolt@cs.ox.ac.uk}
+
+\cortext[cor1]{Corresponding author}
+
+\affiliation[1]{organization={Department of Computer Science, University of Oxford},
+  city={Oxford}, 
+  country={United Kingdom}}
+  
+\affiliation[2]{organization={DUB, University of Washington},
+  city={Seattle, Washington},
+  country={United States}}
+
+\affiliation[3]{organization={Department of Informatics, King's College London},
+  city={London},
+  country={United Kingdom}}
+
+\begin{abstract}
+$abstract$
+\end{abstract}
+
+\begin{keyword}
+$keywords$
+\end{keyword}
+
+\end{frontmatter}
+
+\linenumbers
+
+$body$
+
+\bibliography{$bibliography$}
+
+\end{document}

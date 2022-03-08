@@ -1,0 +1,75 @@
+---
+title: "Wrangling - combine reviews"
+author: "Ulrik Lyngs"
+date: '2022-03-04'
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+# Combine the reviews
+
+```{r, message=FALSE}
+# read in
+chrome_reviews <- read_csv(here::here("data", "processed", "chrome", "2019-02-08-chrome_reviews_unique.csv")) %>% 
+  mutate(store = "chrome")
+play_reviews <- read_csv(here::here("data", "processed", "play", "2019_03_19-play_reviews_unique.csv")) %>% 
+  mutate(store = "play")
+apple_reviews <- read_csv(here::here("data", "processed", "apple", "2019-03-21_apple_reviews_unique.csv")) %>% 
+  mutate(store = "apple")
+
+# counts
+chrome_review_num <- chrome_reviews %>% filter(type == "review") %>% nrow()
+chrome_reply_num <- chrome_reviews %>% filter(type == "reply") %>% nrow()
+
+apple_reply_num <- apple_reviews %>% filter(!is.na(dev_response_date)) %>% nrow()
+
+total_reviews_and_replies <- nrow(chrome_reviews) + nrow(play_reviews) + nrow(apple_reviews) + apple_reply_num
+
+```
+
+Our own scrapers also collected replies to the reviews (at the time of scraping, developers could reply to a review on the Apple App Store; anyone could reply to a review on the Chrome Web Store).
+In total, we collected `r total_reviews_and_replies` reviews and replies; `r nrow(chrome_reviews)` from the Chrome Web store (`r chrome_review_num` reviews and `r chrome_reply_num` replies), `r nrow(apple_reviews) + apple_reply_num` from the Apple App store (`r nrow(apple_reviews)` reviews and `r apple_reply_num` developer replies), and `r nrow(play_reviews)` reviews from the Google Play store.
+
+```{r}
+# join up
+all_reviews <- chrome_reviews %>% 
+  filter(type == "review") %>% 
+  select(tool_id = extension_url, user_name, date = date_modified, rating, review_text = text, store) %>% 
+  bind_rows(play_reviews %>% rename(review_text = text, tool_id = app_id)) %>% 
+  bind_rows(apple_reviews %>% select(tool_id = app_id, user_name, date, rating, review_text, store))
+
+# get rid of reviews that only differ in their posting date -- i.e. someone might have posted the same review on different dates
+all_reviews_distinct <- all_reviews %>% 
+  distinct(across(-date))
+
+review_count_by_store <- all_reviews_distinct %>% count(store)
+
+review_posting_dates <- all_reviews %>% 
+  summarise(first = min(date, na.rm = TRUE),
+            last = max(date, na.rm = TRUE))
+```
+
+For our analyses, we excluded review replies, as well as reviews that differed only in their posting date (a small number of reviews were posted multiple times by the same reviewer), leaving us with a final dataset of `r nrow(all_reviews_distinct)` reviews 
+(Chrome Web: `r review_count_by_store %>% filter(store == "chrome") %>% pull(n)`, 
+Play: `r review_count_by_store %>% filter(store == "play") %>% pull(n)`,
+Apple: `r review_count_by_store %>% filter(store == "apple") %>% pull(n)`), 
+posted between `r review_posting_dates$first` and `r review_posting_dates$last`.
+
+# Simplify tool id for the chrome web store and save our
+```{r}
+# join it up with the reviews and save out
+all_reviews_distinct %>%
+  # simplify toolid for chrome web extensions
+  mutate(tool_id = if_else(store == "chrome", 
+                           str_remove(tool_id, "\\?hl=.+") %>%  str_extract("/[^/]+$") %>% str_remove("/"),
+                           tool_id)) %>% 
+  relocate(tool_id, store) %>% 
+  write_csv(here::here("data", "processed", "distinct_reviews.csv"))
+
+```
+
