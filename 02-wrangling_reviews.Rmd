@@ -69,7 +69,6 @@ posted between `r review_posting_dates$first` and `r review_posting_dates$last`.
 ```{r}
 # join it up with the reviews and save out
 all_reviews_distinct %>%
-  # simplify toolid for chrome web extensions
   relocate(tool_id, store) %>% 
   write_csv(here::here("data", "processed", "distinct_reviews.csv"))
 
