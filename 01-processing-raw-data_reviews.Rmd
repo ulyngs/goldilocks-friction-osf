@@ -153,6 +153,7 @@ chrome_reviews %>%
         ),
     date_modified = lubridate::mdy(date_modified)) %>% 
   rename(rating = numstars) %>% 
+  mutate(text = str_squish(text)) %>% # get rid of excess whitespace 
   distinct(across(-review_page)) %>% 
   write_csv(here::here("data", "processed", "chrome", "2019-02-08-chrome_reviews_unique.csv"))
 
@@ -210,7 +211,8 @@ Then we remove duplicates and save them out
 
 ```{r}
 play_reviews_tibble %>% 
-  mutate(date = lubridate::mdy(date)) %>% 
+  mutate(date = lubridate::mdy(date),
+         text = str_squish(text)) %>% 
   distinct() %>% 
   write_csv(here::here("data", "processed", "play", "2019_03_19-play_reviews_unique.csv"))
 
@@ -264,7 +266,7 @@ extract_apple_review_info <- function(apple_review) {
 apple_review_tibble <- apple_reviews %>% 
   mutate(review_info = map(reviews, extract_apple_review_info)) %>% 
   select(-reviews) %>% 
-  unnest()
+  unnest(cols = c(review_info))
 
 ```
 
@@ -359,10 +361,11 @@ apple_reviews_all %>%
   mutate(user_name = str_remove(user_name, "\n"),
          review_text = str_c(review_title, review_text, sep = ". ") %>% str_replace_all("\n", "")) %>% 
   select(-review_title) %>% 
-  # turn the rating into an integer
-  mutate(rating = str_replace(rating, "out of 5", "") %>% as.integer()) %>% 
-  # change date format
-  mutate(date = lubridate::dmy(date)) %>% 
+  # turn the rating into an integer and change date format
+  mutate(rating = str_replace(rating, "out of 5", "") %>% as.integer(),
+         date = lubridate::dmy(date)) %>% 
+  # get rid of excess whitespace
+  mutate(review_text = str_squish(review_text)) %>% 
   distinct() %>% 
   write_csv(here::here("data", "processed", "apple", "2019-03-21_apple_reviews_unique.csv"))
 ```
