@@ -1,0 +1,122 @@
+---
+title: "01-review-wrangling"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(writexl)
+```
+
+# Extracting reviews for analysis
+## Our exclusion process
+- we exclude tools that have fewer than 5 ratings (apple) or less than 100 installs / users (google play and chrome web)
+- we exclude reviews with fewer than 10 words
+- we want: broad distribution across functionality and stores
+- we do, in order of the most popular: for a main functionality type, we slice off a tool from each store which has that type of functionality and sample up to 30 reviews from it; then we move on to the next functionality type; we repeat until we have about 1500 reviews
+
+## Read in the review data
+Get the reviews that have more than 10 words
+
+```{r}
+review_data <- read_csv(here::here("data", "processed", "distinct_reviews.csv")) %>% 
+  mutate(review_word_count = stringi::stri_count_words(review_text)) %>% 
+  filter(review_word_count >= 10) %>% 
+  select(-review_word_count)
+  
+# get also the review counts
+review_counts <- review_data %>% 
+  group_by(tool_id) %>% 
+  summarise(num_reviews = n())
+
+```
+
+## Get the tool info
+We apply the exclusion criteria and order them by our ranking measure
+
+```{r}
+store_info <- read_csv(here::here("data", "processed", "meta_data_all_w_design_pattern_types.csv"))
+
+# exclude if they have fewer than 5 ratings (apple) or less than 100 installs / users on the google play and chrome web stores
+# arrange by numbers of users (num of ratings for the apple store)
+tool_by_num_users <- store_info %>% 
+  select(store, tool_id, title, average_rating, num_ratings, min_installs, num_users, categories_alphabetically) %>% 
+  left_join(review_counts) %>% 
+  filter(!is.na(num_reviews)) %>% 
+  filter((store == "apple" & num_ratings >= 5) | min_installs >= 100 | num_users >= 100) %>% 
+  mutate(ranking_measure = case_when(
+    store == "play" ~ min_installs,
+    store == "chrome" ~ num_users,
+    store == "apple" ~ num_ratings
+  )) %>% 
+  arrange(store, desc(ranking_measure))
+  
+```
+
+Ok, so let's write a nested for loop to grab the reviews.
+
+```{r}
+feature_categories <- c("Block/removal", "Goal-advancement", "Self-tracking", "Reward/punish")
+stores <- c("apple", "chrome", "play")
+
+# initialise empty results and apps sampled from
+review_results <- tibble(
+)
+apps_sampled_from <- c()
+
+while(nrow(review_results) < 1500){
+  for (category in feature_categories){
+    current_category_tools <- tool_by_num_users %>% 
+      filter(!tool_id %in% apps_sampled_from) %>% 
+      filter(str_detect(categories_alphabetically, category))
+    
+    for (cur_store in stores) {
+      # print out how many we have and break the loop if we're about 1500
+      print(str_c("num reviews sampled: ", nrow(review_results)))
+      
+      if(nrow(review_results) > 1500) {
+        print("breaking loop")
+        break
+      }
+      
+      #print(cur_store)
+      current_store_tools <- current_category_tools %>% 
+        filter(store == cur_store)
+      
+      current_app <- current_store_tools %>% 
+        slice(1) %>% 
+        pull(tool_id)
+      
+      if (length(current_app) > 0){
+        current_reviews <- review_data %>% 
+          filter(tool_id == current_app) %>% 
+          slice(1:30) %>% 
+          slice_sample(n = 30, replace = FALSE)
+        
+        # update reviews and apps sampled from
+        review_results <- bind_rows(review_results, current_reviews)
+        apps_sampled_from <- c(apps_sampled_from, current_app) 
+      }
+    }
+  }
+}
+
+```
+
+We'll add a date to the reviews
+
+```{r}
+all_reviews_w_most_recent_date <- read_csv(here::here("data", "processed", "all_reviews.csv")) %>% 
+  group_by(row_number()) %>% 
+  top_n(1, date)
+
+review_results %>% 
+  mutate(review_id = str_c("R", row_number())) %>% 
+  left_join(all_reviews_w_most_recent_date) %>% 
+  left_join(store_info) %>% 
+  select(review_id, store, title, tool_id, categories_alphabetically, user_name, date, rating, review_text) %>% 
+  arrange(title, tool_id, date) %>% 
+  write_xlsx(str_c(here::here("data", "processed/"), lubridate::today(), "-reviews_for_ta.xlsx"))
+
+```
+
