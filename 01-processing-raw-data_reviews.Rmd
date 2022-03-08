@@ -17,7 +17,7 @@ library(jsonlite)
 
 # Chrome Web store
 ## Extract reviews from page sources
-In this case, we've store .RDS files that contain the page sources.
+In this case, we've stored .RDS files that contain the page sources.
 
 We'll first create the helper functions we need.
 
