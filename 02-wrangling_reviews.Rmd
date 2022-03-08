@@ -39,9 +39,14 @@ In total, we collected `r total_reviews_and_replies` reviews and replies; `r nro
 # join up
 all_reviews <- chrome_reviews %>% 
   filter(type == "review") %>% 
-  select(tool_id = extension_url, user_name, date = date_modified, rating, review_text = text, store) %>% 
+  # use the unique ending of the URL as tool id
+  mutate(tool_id = str_remove(extension_url, "\\?hl=.+") %>%  str_extract("/[^/]+$") %>% str_remove("/")) %>% 
+  select(tool_id, user_name, date = date_modified, rating, review_text = text, store) %>% 
   bind_rows(play_reviews %>% rename(review_text = text, tool_id = app_id)) %>% 
   bind_rows(apple_reviews %>% select(tool_id = app_id, user_name, date, rating, review_text, store))
+
+all_reviews %>% 
+  write_csv(here::here("data", "processed", "all_reviews.csv"))
 
 # get rid of reviews that only differ in their posting date -- i.e. someone might have posted the same review on different dates
 all_reviews_distinct <- all_reviews %>% 
@@ -65,9 +70,6 @@ posted between `r review_posting_dates$first` and `r review_posting_dates$last`.
 # join it up with the reviews and save out
 all_reviews_distinct %>%
   # simplify toolid for chrome web extensions
-  mutate(tool_id = if_else(store == "chrome", 
-                           str_remove(tool_id, "\\?hl=.+") %>%  str_extract("/[^/]+$") %>% str_remove("/"),
-                           tool_id)) %>% 
   relocate(tool_id, store) %>% 
   write_csv(here::here("data", "processed", "distinct_reviews.csv"))
 
