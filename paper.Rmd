@@ -197,18 +197,20 @@ knitr::include_graphics("figures/wordcloud.png")
 (num_reviews_summary <- reviews_w_main_cat_data %>% 
   group_by(tool_id) %>% 
   summarise(num_reviews = n()) %>% 
-  summarise(median = median(num_reviews),
-            mean = mean(num_reviews),
-            min = min(num_reviews),
-            max = max(num_reviews),
-            IQR = IQR(num_reviews)))
+  summarise(mean = mean(num_reviews),
+            min = quantile(num_reviews, 0),
+            q_25 = quantile(num_reviews, 0.25),
+            median = quantile(num_reviews, 0.5),
+            q_75 = quantile(num_reviews, 0.75),
+            max = quantile(num_reviews, 1))
 
 (word_count_summary <- reviews_w_main_cat_data %>% 
-  summarise(median = median(review_word_count),
-            mean = mean(review_word_count),
-            min = min(review_word_count),
-            max = max(review_word_count),
-            IQR = IQR(review_word_count)))
+  summarise(mean = mean(review_word_count),
+            min = quantile(review_word_count, 0),
+            q_25 = quantile(review_word_count, 0.25),
+            median = quantile(review_word_count, 0.5),
+            q_75 = quantile(review_word_count, 0.75),
+            max = quantile(review_word_count, 1)))
 
 (ptc_app <- reviews_w_main_cat_data %>% 
   mutate(has_app = str_detect(review_text, "app")) %>% 
