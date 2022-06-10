@@ -129,8 +129,8 @@ At the time of scraping, `r num_missing` tools from Lyngs et al.'s review had be
 Hence, we scraped information for `r nrow(meta_data)` tools: 
 `r num_w_info_by_store %>% filter(store == "chrome") %>% pull(n)` extensions from Chrome Web, `r num_w_info_by_store %>% filter(store == "play") %>% pull(n)` apps from Google Play, and `r num_w_info_by_store %>% filter(store == "apple") %>% pull(n)` apps from the Apple App store.
 
-`r nrow(got_reviews_from)` of these tools had received user reviews (`r num_tools_w_reviews_by_store %>% filter(store == "chrome") %>% pull(n)` from Chrome Web, `r num_tools_w_reviews_by_store %>% filter(store == "google_play") %>% pull(n)` from Google Play, and `r num_tools_w_reviews_by_store %>% filter(store == "apple") %>% pull(n)` from the Apple App store). 
-From these, we collected a total of `r format(nrow(reviews_w_main_cat_data), big.mark = ",")` reviews (`r num_reviews_by_store %>% filter(store == "chrome") %>% pull(n) %>% format(big.mark = ",")` from Chrome Web, `r num_reviews_by_store %>% filter(store == "google_play") %>% pull(n) %>% format(big.mark = ",")` from Google Play, and `r num_reviews_by_store %>% filter(store == "apple") %>% pull(n) %>% format(big.mark = ",")` from the Apple App store).
+`r nrow(got_reviews_from)` of these tools had received user reviews (`r num_tools_w_reviews_by_store %>% filter(store == "chrome") %>% pull(n)` from Chrome Web, `r num_tools_w_reviews_by_store %>% filter(store == "play") %>% pull(n)` from Google Play, and `r num_tools_w_reviews_by_store %>% filter(store == "apple") %>% pull(n)` from the Apple App store). 
+From these, we collected a total of `r format(nrow(reviews_w_main_cat_data), big.mark = ",")` reviews (`r num_reviews_by_store %>% filter(store == "chrome") %>% pull(n) %>% format(big.mark = ",")` from Chrome Web, `r num_reviews_by_store %>% filter(store == "play") %>% pull(n) %>% format(big.mark = ",")` from Google Play, and `r num_reviews_by_store %>% filter(store == "apple") %>% pull(n) %>% format(big.mark = ",")` from the Apple App store).
 
 ## User reviews
 
@@ -377,15 +377,13 @@ knitr::include_graphics("figures/user_numbers_combined_plot.png")
             q75_rating = quantile(average_rating, 0.75),
             max_rating = max(average_rating, na.rm = TRUE)))
 
-
-
 ```
 
 The distribution of numbers of users/installations and ratings are shown in Figure \ref{fig:tool-num-users-and-ratings-plot}.
 For Google Play tools, the median 'minimum number of installs' was `r format(play_user_stats$median_min_installs, big.mark = ",")` (min = `r format(play_user_stats$min_min_installs, big.mark = ",")`, max = `r format(play_user_stats$max_min_installs, big.mark = ",")`, IQR = `r format(play_user_stats$q25_min_installs, big.mark = ",")` to `r format(play_user_stats$q75_min_installs, big.mark = ",")`). 
-For Chrome Web tools, the median number of users was `r format(chrome_user_stats$media_installs, big.mark=",")` (min = `r format(chrome_user_stats$min_installs, big.mark=",")`, max = `r format(chrome_user_stats$max_installs, big.mark=",")`, IQR = `r format(chrome_user_stats$q25_installs, big.mark=",")` to `r format(chrome_user_stats$q75_installs, big.mark=",")`). 
+For Chrome Web tools, the median number of users was `r format(chrome_user_stats$median_installs, big.mark=",")` (min = `r format(chrome_user_stats$min_installs, big.mark=",")`, max = `r format(chrome_user_stats$max_installs, big.mark=",")`, IQR = `r format(chrome_user_stats$q25_installs, big.mark=",")` to `r format(round(chrome_user_stats$q75_installs), big.mark=",")`). 
 The Apple App store did not display information about number of users (the median number of ratings for DSCTs from the Apple App store was `r format(num_ratings_apple$median, big.mark=",")`; max = `r format(num_ratings_apple$max, big.mark=",")`, IQR = `r format(num_ratings_apple$q25, big.mark=",")` to `r format(num_ratings_apple$q75, big.mark=",")`). 
-The median average rating across all tools was `r format(ratings_overall$median_rating, big.mark=",")` (min = `r format(ratings_overall$min_rating, big.mark=",")`, max = `r format(ratings_overall$max_rating, big.mark=",")`, IQR = `r format(ratings_overall$q25_rating, big.mark=",")` to `r format(ratings_overall$q75_rating, big.mark=",")`; ratings given on a scale from 1 to 5 stars on all stores).
+The median average rating across all tools was `r format(ratings_overall$median_rating, big.mark=",")` (min = `r format(ratings_overall$min_rating, big.mark=",")`, max = `r format(ratings_overall$max_rating, big.mark=",")`, IQR = `r format(round(ratings_overall$q25_rating), nsmall=1)` to `r format(round(ratings_overall$q75_rating), nsmall=1)`; ratings given on a scale from 1 to 5 stars on all stores).
 
 (ref:caption-ratings-by-functionality) Average ratings by design patterns in digital self-control tools (for tools with 15 or more ratings). Tools including more than one type of design pattern had higher average ratings (median = 4.39) than tools implementing a single type (median = 4.2, *p* = 0.003, Wilcoxon's rank-sum test).
 
